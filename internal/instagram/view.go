@@ -23,6 +23,8 @@ type Item struct {
 	IsVideo   bool
 	Shortcode string
 	TakenAt   int64
+	Username  string
+	Caption   string
 }
 
 func ParseUsername(input string) string {
@@ -74,6 +76,8 @@ func BuildItems(profile Profile, includeAvatar bool, includeVideos bool) []Item 
 			IsVideo:   media.IsVideo,
 			Shortcode: media.Shortcode,
 			TakenAt:   media.TakenAt,
+			Username:  media.Username,
+			Caption:   media.Caption,
 		})
 	}
 	return items

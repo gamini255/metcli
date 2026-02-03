@@ -22,6 +22,8 @@ type outputItem struct {
 	IsVideo   bool   `json:"is_video"`
 	Shortcode string `json:"shortcode,omitempty"`
 	TakenAt   int64  `json:"taken_at,omitempty"`
+	Username  string `json:"username,omitempty"`
+	Caption   string `json:"caption,omitempty"`
 }
 
 func main() {
@@ -129,6 +131,8 @@ func main() {
 				IsVideo:   item.IsVideo,
 				Shortcode: item.Shortcode,
 				TakenAt:   item.TakenAt,
+				Username:  item.Username,
+				Caption:   item.Caption,
 			})
 		}
 		encoded, err := json.MarshalIndent(payload, "", "  ")

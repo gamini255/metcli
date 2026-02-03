@@ -24,6 +24,8 @@ type MediaItem struct {
 	IsVideo   bool
 	Shortcode string
 	TakenAt   int64
+	Username  string
+	Caption   string
 }
 
 const (
@@ -216,6 +218,7 @@ func buildProfile(user *profileUser) Profile {
 			IsVideo:   node.IsVideo,
 			Shortcode: node.Shortcode,
 			TakenAt:   node.TakenAtTimestamp,
+			Username:  user.Username,
 		})
 	}
 

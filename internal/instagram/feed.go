@@ -23,6 +23,14 @@ type feedEntry struct {
 	Media     feedItem `json:"media"`
 }
 
+type feedUser struct {
+	Username string `json:"username"`
+}
+
+type feedCaption struct {
+	Text string `json:"text"`
+}
+
 type feedItem struct {
 	MediaType     int             `json:"media_type"`
 	ImageVersions imageVersions   `json:"image_versions2"`
@@ -31,6 +39,9 @@ type feedItem struct {
 	Code          string          `json:"code"`
 	Shortcode     string          `json:"shortcode"`
 	TakenAt       int64           `json:"taken_at"`
+	User          feedUser        `json:"user"`
+	Caption       *feedCaption    `json:"caption"`
+	CaptionText   string          `json:"caption_text"`
 }
 
 type carouselMedia struct {
@@ -116,6 +127,14 @@ func FetchUserMedia(
 		}
 	}
 
+	if strings.TrimSpace(username) != "" {
+		for i := range out {
+			if strings.TrimSpace(out[i].Username) == "" {
+				out[i].Username = username
+			}
+		}
+	}
+
 	return out, nil
 }
 
@@ -175,10 +194,12 @@ func feedItemToMedia(item feedItem) []MediaItem {
 	if shortcode == "" {
 		shortcode = item.Shortcode
 	}
+	username := strings.TrimSpace(item.User.Username)
+	caption := itemCaption(item)
 
 	switch item.MediaType {
 	case 8:
-		return expandCarousel(item, shortcode)
+		return expandCarousel(item, shortcode, username, caption)
 	case 2:
 		url := strings.TrimSpace(item.ThumbnailURL)
 		if url == "" {
@@ -192,6 +213,8 @@ func feedItemToMedia(item feedItem) []MediaItem {
 			IsVideo:   true,
 			Shortcode: shortcode,
 			TakenAt:   item.TakenAt,
+			Username:  username,
+			Caption:   caption,
 		}}
 	default:
 		url := pickBestCandidate(item.ImageVersions.Candidates)
@@ -203,8 +226,17 @@ func feedItemToMedia(item feedItem) []MediaItem {
 			IsVideo:   false,
 			Shortcode: shortcode,
 			TakenAt:   item.TakenAt,
+			Username:  username,
+			Caption:   caption,
 		}}
 	}
+}
+
+func itemCaption(item feedItem) string {
+	if item.Caption != nil {
+		return strings.TrimSpace(item.Caption.Text)
+	}
+	return strings.TrimSpace(item.CaptionText)
 }
 
 func FetchHomeFeed(
@@ -265,6 +297,71 @@ func FetchHomeFeed(
 	return out, nil
 }
 
+func StreamHomeFeed(
+	ctx context.Context,
+	cookies CookieBundle,
+	max int,
+	pageSize int,
+	includeVideos bool,
+	onItem func(MediaItem) error,
+) (int, error) {
+	if max == 0 {
+		max = -1
+	}
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	if pageSize > 50 {
+		pageSize = 50
+	}
+	if onItem == nil {
+		return 0, nil
+	}
+
+	seen := map[string]struct{}{}
+	count := 0
+	maxID := ""
+	pageCount := 0
+	for {
+		pageCount++
+		page, err := fetchHomeFeedPage(ctx, maxID, pageSize, cookies)
+		if err != nil {
+			return count, err
+		}
+		for _, item := range page.items {
+			if item.URL == "" {
+				continue
+			}
+			if item.IsVideo && !includeVideos {
+				continue
+			}
+			if _, ok := seen[item.URL]; ok {
+				continue
+			}
+			seen[item.URL] = struct{}{}
+			if err := onItem(item); err != nil {
+				return count, err
+			}
+			count++
+			if max > 0 && count >= max {
+				return count, nil
+			}
+		}
+		if !page.moreAvailable || page.nextMaxID == "" {
+			break
+		}
+		if page.nextMaxID == maxID {
+			break
+		}
+		maxID = page.nextMaxID
+		if pageCount > 200 {
+			break
+		}
+	}
+
+	return count, nil
+}
+
 func fetchHomeFeedPage(
 	ctx context.Context,
 	maxID string,
@@ -315,7 +412,7 @@ func fetchHomeFeedPage(
 	}, nil
 }
 
-func expandCarousel(item feedItem, shortcode string) []MediaItem {
+func expandCarousel(item feedItem, shortcode, username, caption string) []MediaItem {
 	items := make([]MediaItem, 0, len(item.CarouselMedia))
 	for _, media := range item.CarouselMedia {
 		isVideo := media.MediaType == 2
@@ -334,6 +431,8 @@ func expandCarousel(item feedItem, shortcode string) []MediaItem {
 			IsVideo:   isVideo,
 			Shortcode: shortcode,
 			TakenAt:   item.TakenAt,
+			Username:  username,
+			Caption:   caption,
 		})
 	}
 	return items
