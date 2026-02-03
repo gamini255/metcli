@@ -12,9 +12,15 @@ import (
 )
 
 type feedResponse struct {
-	Items         []feedItem `json:"items"`
-	MoreAvailable bool       `json:"more_available"`
-	NextMaxID     string     `json:"next_max_id"`
+	Items         []feedItem  `json:"items"`
+	FeedItems     []feedEntry `json:"feed_items"`
+	MoreAvailable bool        `json:"more_available"`
+	NextMaxID     string      `json:"next_max_id"`
+}
+
+type feedEntry struct {
+	MediaOrAd feedItem `json:"media_or_ad"`
+	Media     feedItem `json:"media"`
 }
 
 type feedItem struct {
@@ -199,6 +205,114 @@ func feedItemToMedia(item feedItem) []MediaItem {
 			TakenAt:   item.TakenAt,
 		}}
 	}
+}
+
+func FetchHomeFeed(
+	ctx context.Context,
+	cookies CookieBundle,
+	max int,
+	pageSize int,
+) ([]MediaItem, error) {
+	if max == 0 {
+		max = -1
+	}
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	if pageSize > 50 {
+		pageSize = 50
+	}
+
+	out := make([]MediaItem, 0, pageSize)
+	seen := map[string]struct{}{}
+	appendUnique := func(items []MediaItem) {
+		for _, item := range items {
+			if item.URL == "" {
+				continue
+			}
+			if _, ok := seen[item.URL]; ok {
+				continue
+			}
+			seen[item.URL] = struct{}{}
+			out = append(out, item)
+		}
+	}
+
+	maxID := ""
+	pageCount := 0
+	for {
+		pageCount++
+		page, err := fetchHomeFeedPage(ctx, maxID, pageSize, cookies)
+		if err != nil {
+			return out, err
+		}
+		appendUnique(page.items)
+		if max > 0 && len(out) >= max {
+			return out[:max], nil
+		}
+		if !page.moreAvailable || page.nextMaxID == "" {
+			break
+		}
+		if page.nextMaxID == maxID {
+			break
+		}
+		maxID = page.nextMaxID
+		if pageCount > 200 {
+			break
+		}
+	}
+
+	return out, nil
+}
+
+func fetchHomeFeedPage(
+	ctx context.Context,
+	maxID string,
+	pageSize int,
+	cookies CookieBundle,
+) (feedPage, error) {
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	if pageSize > 50 {
+		pageSize = 50
+	}
+	endpoint := fmt.Sprintf("https://www.instagram.com/api/v1/feed/timeline/?count=%d", pageSize)
+	if strings.TrimSpace(maxID) != "" {
+		endpoint += "&max_id=" + url.QueryEscape(maxID)
+	}
+
+	body, status, err := doJSONRequestWithLimit(ctx, endpoint, "", cookies, 4<<20)
+	if err != nil {
+		return feedPage{}, fmt.Errorf("home feed request failed (%d): %s", status, errText(err))
+	}
+
+	var raw feedResponse
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return feedPage{}, err
+	}
+
+	items := make([]MediaItem, 0, len(raw.Items))
+	for _, item := range raw.Items {
+		items = append(items, feedItemToMedia(item)...)
+	}
+	if len(items) == 0 && len(raw.FeedItems) > 0 {
+		for _, entry := range raw.FeedItems {
+			if entry.MediaOrAd.Code != "" || entry.MediaOrAd.Shortcode != "" || entry.MediaOrAd.MediaType != 0 {
+				items = append(items, feedItemToMedia(entry.MediaOrAd)...)
+				continue
+			}
+			if entry.Media.Code != "" || entry.Media.Shortcode != "" || entry.Media.MediaType != 0 {
+				items = append(items, feedItemToMedia(entry.Media)...)
+			}
+		}
+	}
+
+	return feedPage{
+		items:         items,
+		moreAvailable: raw.MoreAvailable,
+		nextMaxID:     raw.NextMaxID,
+	}, nil
 }
 
 func expandCarousel(item feedItem, shortcode string) []MediaItem {

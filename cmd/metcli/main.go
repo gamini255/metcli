@@ -27,6 +27,7 @@ type CLI struct {
 type InstagramCmd struct {
 	Profile InstagramProfileCmd `cmd:"" help:"Show profile images"`
 	Feed    InstagramFeedCmd    `cmd:"" help:"Show feed images"`
+	Home    InstagramHomeCmd    `cmd:"" help:"Show home timeline images"`
 	URLs    InstagramURLsCmd    `cmd:"" name:"urls" help:"List profile image URLs"`
 }
 
@@ -79,6 +80,23 @@ type InstagramURLsCmd struct {
 	Names         string `help:"comma-separated cookie names"`
 }
 
+type InstagramHomeCmd struct {
+	Format        string `help:"url|inline|json" default:"url"`
+	Inline        bool   `help:"shorthand for --format inline"`
+	URL           bool   `help:"shorthand for --format url"`
+	JSON          bool   `help:"shorthand for --format json"`
+	Max           int    `help:"max items (0 = all)" default:"0"`
+	IncludeVideos bool   `help:"include video thumbnails" default:"true" negatable:""`
+	PageSize      int    `help:"items per API page (1-50)" default:"50"`
+	Profile       string `help:"Chrome profile name/dir or Cookies DB path"`
+	Names         string `help:"comma-separated cookie names"`
+	GridCols      int    `help:"grid columns" default:"4"`
+	ThumbCols     int    `help:"thumb width in cells (0 = auto)" default:"0"`
+	ThumbPx       int    `help:"thumbnail size in px" default:"256"`
+	PaddingPx     int    `help:"padding between thumbs in px" default:"8"`
+	PageGridSize  int    `help:"images per grid page (0 = auto)" default:"0"`
+}
+
 type outputItem struct {
 	URL       string `json:"url"`
 	Kind      string `json:"kind"`
@@ -105,6 +123,10 @@ func main() {
 		}
 	case "instagram feed":
 		if err := cli.Instagram.Feed.Run(); err != nil {
+			fail(err)
+		}
+	case "instagram home":
+		if err := cli.Instagram.Home.Run(); err != nil {
 			fail(err)
 		}
 	case "instagram urls <user>":
@@ -309,6 +331,75 @@ func (cmd *InstagramURLsCmd) Run() error {
 	return nil
 }
 
+func (cmd *InstagramHomeCmd) Run() error {
+	format := strings.ToLower(strings.TrimSpace(cmd.Format))
+	if cmd.Inline {
+		format = "inline"
+	}
+	if cmd.URL {
+		format = "url"
+	}
+	if cmd.JSON {
+		format = "json"
+	}
+	if format != "inline" && format != "url" && format != "json" {
+		return fmt.Errorf("unsupported format: %s", format)
+	}
+
+	ctx := context.Background()
+	cookies, items, warnings, err := loadHomeItems(
+		ctx,
+		cmd.Profile,
+		cmd.Names,
+		cmd.PageSize,
+		cmd.Max,
+		cmd.IncludeVideos,
+	)
+	if err != nil {
+		return err
+	}
+	printWarnings("[metcli]", warnings)
+	if len(items) == 0 {
+		_, _ = fmt.Fprintln(os.Stderr, "[metcli] no images to render")
+		return nil
+	}
+
+	switch format {
+	case "json":
+		payload := make([]outputItem, 0, len(items))
+		for _, item := range items {
+			payload = append(payload, outputItem{
+				URL:       item.URL,
+				Kind:      item.Kind,
+				IsVideo:   item.IsVideo,
+				Shortcode: item.Shortcode,
+				TakenAt:   item.TakenAt,
+			})
+		}
+		encoded, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintln(os.Stdout, string(encoded))
+	case "url":
+		for _, item := range items {
+			_, _ = fmt.Fprintln(os.Stdout, item.URL)
+		}
+	case "inline":
+		renderGrid(items, "", cookies, gridOptions{
+			GridCols:  cmd.GridCols,
+			ThumbCols: cmd.ThumbCols,
+			ThumbPx:   cmd.ThumbPx,
+			PaddingPx: cmd.PaddingPx,
+			PageSize:  cmd.PageGridSize,
+		})
+	default:
+		return fmt.Errorf("unsupported format: %s", format)
+	}
+
+	return nil
+}
+
 type gridOptions struct {
 	GridCols  int
 	ThumbCols int
@@ -460,6 +551,36 @@ func loadInstagramItems(
 	}
 
 	items := instagram.BuildItems(profile, avatar, includeVideos)
+	if max > 0 && len(items) > max {
+		items = items[:max]
+	}
+	return cookies, items, warnings, nil
+}
+
+func loadHomeItems(
+	ctx context.Context,
+	profilePath string,
+	namesRaw string,
+	pageSize int,
+	max int,
+	includeVideos bool,
+) (instagram.CookieBundle, []instagram.Item, []string, error) {
+	names := parseNames(namesRaw)
+	cookies, warnings, err := instagram.LoadCookies(ctx, profilePath, names)
+	if err != nil {
+		return cookies, nil, warnings, err
+	}
+
+	media, err := instagram.FetchHomeFeed(ctx, cookies, max, pageSize)
+	if err != nil {
+		if len(media) == 0 {
+			return cookies, nil, warnings, err
+		}
+		warnings = append(warnings, fmt.Sprintf("home feed warning: %s", err.Error()))
+	}
+
+	profile := instagram.Profile{Media: media}
+	items := instagram.BuildItems(profile, false, includeVideos)
 	if max > 0 && len(items) > max {
 		items = items[:max]
 	}
